@@ -1,0 +1,24 @@
+{
+  "loader": {
+    "name": "java_plain",
+    "version": "1.0"
+  },
+  "license": "MIT",
+  "global": {
+    "version": "0.1.0",
+    "dependencies": [
+      {
+        "id": "spongeapi",
+        "version": "11.0.0"
+      }
+    ]
+  },
+  "plugins": [
+    {
+      "id": "telescope",
+      "name": "Telescope",
+      "entrypoint": "me.hacksparr0w.telescope.TelescopePlugin",
+      "description": "Sponge plugin providing server observability with Prometheus"
+    }
+  ]
+}
