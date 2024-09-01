@@ -8,7 +8,7 @@ import io.prometheus.metrics.exporter.httpserver.HTTPServer
 import io.prometheus.metrics.instrumentation.jvm.JvmMetrics
 
 import java.util.Optional
-import java.util.OptionalInt
+import java.time.Duration
 
 import org.apache.logging.log4j.Logger
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion
@@ -16,10 +16,10 @@ import org.apache.maven.artifact.versioning.DefaultArtifactVersion
 import org.spongepowered.api.Game
 import org.spongepowered.api.MinecraftVersion
 import org.spongepowered.api.Server
-import org.spongepowered.api.Sponge
 import org.spongepowered.api.event.Listener
 import org.spongepowered.api.event.lifecycle.StartedEngineEvent
 import org.spongepowered.api.event.network.ServerSideConnectionEvent
+import org.spongepowered.api.scheduler.Task
 
 import org.spongepowered.plugin.builtin.jvm.Plugin
 import org.spongepowered.plugin.PluginContainer
@@ -47,10 +47,34 @@ class TelescopePlugin @Inject() (
       )
       .register
 
-  val spongePlayerCount: Gauge = 
+  val spongeOnlinePlayers: Gauge = 
     Gauge.builder
-      .name("sponge_player_count")
+      .name("sponge_online_players")
       .help("Number of players currently online")
+      .register
+    
+  val spongeTargetTps: Gauge = 
+    Gauge.builder
+      .name("sponge_target_tps")
+      .help("Target ticks per second")
+      .register
+
+  val spongeCurrentTps: Gauge = 
+    Gauge.builder
+      .name("sponge_current_tps")
+      .help("Current ticks per second")
+      .register
+  
+  val spongeLoadedWorlds: Gauge = 
+    Gauge.builder
+      .name("sponge_loaded_worlds")
+      .help("Number of loaded worlds")
+      .register
+  
+  val spongeLoadedChunks: Gauge =
+    Gauge.builder
+      .name("sponge_loaded_chunks")
+      .help("Number of loaded chunks")
       .register
 
   @Listener
@@ -71,17 +95,47 @@ class TelescopePlugin @Inject() (
         .protocolVersion.toString
     )
 
+    spongeTargetTps.set(game.server.targetTicksPerSecond)
+
+    game.asyncScheduler.submit(
+      Task.builder
+        .plugin(plugin)
+        .execute(() => spongeCurrentTps.set(game.server.ticksPerSecond))
+        .interval(Duration.ofMillis(500))
+        .build
+    )
+
+    game.asyncScheduler.submit(
+      Task.builder
+        .plugin(plugin)
+        .execute(() => spongeLoadedWorlds.set(game.server.worldManager.worlds.size))
+        .interval(Duration.ofSeconds(5))
+        .build
+    )
+
+    game.asyncScheduler.submit(
+      Task.builder
+        .plugin(plugin)
+        .execute(() => spongeLoadedChunks.set(
+          game.server.worldManager.worlds.asScala
+            .map(_.loadedChunks.asScala.size)
+            .sum
+        ))
+        .interval(Duration.ofSeconds(5))
+        .build
+    )
+
     HTTPServer.builder
       .port(8080)
-      .executorService(Sponge.asyncScheduler.executor(plugin))
+      .executorService(game.asyncScheduler.executor(plugin))
       .buildAndStart
 
     logger.info("Plugin started successfully")
 
   @Listener
   def onPlayerJoin(event: ServerSideConnectionEvent.Join) =
-    spongePlayerCount.set(game.server.onlinePlayers.size)
+    spongeOnlinePlayers.set(game.server.onlinePlayers.size)
 
   @Listener
   def onPlayerDisconnect(event: ServerSideConnectionEvent.Disconnect) =
-    spongePlayerCount.set(game.server.onlinePlayers.size)
+    spongeOnlinePlayers.set(game.server.onlinePlayers.size)
